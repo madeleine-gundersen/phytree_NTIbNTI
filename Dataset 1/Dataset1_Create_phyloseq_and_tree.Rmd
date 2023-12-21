@@ -1,0 +1,166 @@
+---
+title: "Dataset1 Create Phyloseq and phylogenetic tree"
+author: "Madeleine Gundersen"
+---
+```{r}
+library("phyloseq")
+library("readxl")
+library("magrittr")
+library("ape")
+library(Bios2cor)
+library(seqinr)
+library(tidyverse)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(rlist)
+library(pipeR)
+library(DECIPHER)
+library(dada2)
+library(phangorn)
+library(ggplot2)
+library(ggtree)
+sessionInfo()
+```
+
+# Phylogenetic tree
+
+```{r}
+# import sequences 
+file_location = "Dataset1/zotus.fa"
+sequences = Bios2cor::import.fasta(file = file_location) #total of 3364 sequences
+asvs = read.table("Dataset1/zOTU_streng_normalisert_navn.txt")
+asvs_keep = as.data.frame(asvs[,1])
+colnames(asvs_keep) = "asvs_keep"
+seq_keep = sequences[asvs_keep$asvs_keep] #filters all sequences that matches the names of zOTU_keep
+# total of 3227 sequences
+#saved sequences as fasta file. 
+seqinr::write.fasta(sequences = seq_keep, names = names(seq_keep),
+                    file.out = "Dataset1/zOTUsequences_to_keep.fa")
+#import the fasta file into object called seqs
+seqs <- dada2::getSequences(object = seq_keep)
+# tip labels are zOTU names (i.e. zOTU1, zOTU10, ect)
+#align zOTU sequences using the  DECIPHER package.
+alignment <- AlignSeqs(DNAStringSet(seqs), anchor=NA,verbose=FALSE)
+```
+
+The phangorn R package is then used to construct a phylogenetic tree. Here we first construct a neighbor-joining tree, and then fit a GTR+G+I (Generalized time-reversible with Gamma rate variation) maximum likelihood tree using the neighbor-joining tree as a starting point.
+```{r}
+phangAlign <- phangorn::phyDat(as(alignment, "matrix"), type="DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm) # Note, tip order != sequence order #start 10:50 end 1051
+fit = pml(treeNJ, data=phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR_1 <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+        rearrangement = "stochastic", control = pml.control(trace = 0))
+saveRDS(fitGTR_1, file = "Dataset1/150322_amalie_phytree_rk_fishwater.RDS")
+```
+
+# Phyloseq
+```{r}
+otumatrix = read_delim("zOTU_streng_normalisert_navn.txt") %>% as.data.frame()
+otumatrix.1 = otumatrix[,1:89] #remove 4 empthy rows imported above
+# changes the rownames to OTU ids
+row.names(otumatrix.1) = otumatrix.1[, 1]
+# deletes the first column
+otumatrix.2 = subset(otumatrix.1, select = c(colnames(otumatrix.1)[2:length(otumatrix.1)]))
+# makes a phyloseq object with an OTU table
+OTU = phyloseq::otu_table(otumatrix.2, taxa_are_rows = TRUE)
+
+# loads the function to the global enviroment 
+source("/Scripts/import_sintax-file.R")
+taxmat = import_sintax_file("zotus.sintax",confidence = 0.8)
+TAX = phyloseq::tax_table(taxmat)
+# combine OTU table and taxonomy and name it as "your experiment"
+experiment = phyloseq::phyloseq(OTU, TAX)
+#converts your excel document to a data frame 
+variables = readxl::read_xlsx("Metadata.xlsx",sheet = 1) %>% as.data.frame
+#changes the row names to the sample names. These must be the same as the sample names in the OTU file
+row.names(variables)=variables$`Sample`  #Sample names is the column name of the samples 
+#converts the data.frame to phyloseq class
+sam_variables = phyloseq::sample_data(variables)
+#Now integrate the variables into the physeq object experiment
+experiment = phyloseq::merge_phyloseq(experiment, sam_variables)
+#load phylogenetic tree created previously 
+tree = readRDS(file = "/Dataset1/150322_amalie_phytree_rk_fishwater.RDS")
+tree.1 = tree$tree
+#root phylogenetic tree
+tree.unrooted = tree.1
+source(file = "/Scripts/pick_new_outgroup.R")
+#pick_new_outgroup result in the ASV with the longest branch 
+new.outgroup = pick_new_outgroup(tree.unrooted) #Zotu498 chosen as outgroup
+#Now we root the tree with this otu as root
+rootedTree = ape::root(tree.unrooted, outgroup=new.outgroup, resolve.root=TRUE)
+experiment_merged = phyloseq(OTU, TAX, sam_variables, rootedTree) #dataset contains 3227 taxa
+# makes an RDS file 
+saveRDS(experiment_merged, "/Dataset1/170322_Amalie_phyloseq.RDS")
+```
+
+
+# Filter dataset
+```{r}
+data_ASVs = experiment_merged
+```
+
+## Full Dataset without contaminants
+```{r}
+data_ASVs #3227 Taxa
+data_ASVsprune = phyloseq::filter_taxa(physeq = data_ASVs, function(x) sum(x)>0 , prune = TRUE) #3200 taxa
+ggtree(data_ASVsprune) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("No contaminants - 3200 ASVs")
+ggsave(filename = paste0(filepath_figures,"phylo_three_all3200ASVs.png"), width = 3, height = 3)
+```
+#Domain bacteria
+```{r}
+not_bacteria = subset_taxa(physeq = data_ASVsprune, Domain != "d_Bacteria") #14 ASVs
+not_bacteria_Taxa = unique(c(taxa_names(not_bacteria))) #14 ASVs
+goodTaxa <- setdiff(taxa_names(data_ASVsprune), not_bacteria_Taxa)
+phy2 = prune_taxa(goodTaxa, data_ASVsprune) #3186 taxa
+tree_wo_taxa = phy2@phy_tree
+pruned.tree<-drop.tip(tree_wo_taxa,tree_wo_taxa$tip.label[-match(goodTaxa, tree_wo_taxa$tip.label)])
+#pick_new_outgroup result in the OTU with the longest branch 
+new.outgroup = pick_new_outgroup(pruned.tree) #Zotu322
+#Now we root the tree with this otu as root
+rootedTree = ape::root(pruned.tree, outgroup=new.outgroup, resolve.root=TRUE)
+experiment = phyloseq(phy2@otu_table, phy2@tax_table, phy2@sam_data, rootedTree) #3176 taxa 
+saveRDS(object = experiment, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_domain_bacteria.RDS"))
+```
+
+```{r}
+ggtree(phy2) + layout_circular() +  geom_tiplab() + ggtitle("Only domain d_Bacteria - 3186 ASVs")
+ggsave(filename = paste0(filepath_figures,"phylo_three_domain-bacteria-3186ASVs.png"), width = 4, height = 5.5)
+```
+
+# Without Salmon DNA
+```{r}
+# ASVs that were identified as salma
+salma_asvs = read.csv(file = paste0(filepath, "/ASVs_salma.csv"), sep = ";") %>% select(ASV_name)
+taxa_bacteria <- setdiff(taxa_names(phy2), salma_asvs$ASV_name) #3149 ASVs
+phy3 <- prune_taxa(taxa_bacteria, phy2) #3149 taxa
+```
+
+```{r}
+ggtree(phy3) + layout_circular() +  geom_tiplab() + ggtitle("Without Salmon - 3149 ASVs")
+ggsave(filename = paste0(filepath_figures,"phylo_three_domain-without-salmon-3149ASVs.png"), width = 4, height = 5.5)
+```
+
+```{r}
+tree_wo_taxa = phy3@phy_tree
+pruned.tree<-drop.tip(tree_wo_taxa,tree_wo_taxa$tip.label[-match(taxa_bacteria, tree_wo_taxa$tip.label)])
+#pick_new_outgroup result in the OTU with the longest branch 
+new.outgroup = pick_new_outgroup(pruned.tree) #Zotu588
+#Now we root the tree with this otu as root
+rootedTree = ape::root(pruned.tree, outgroup=new.outgroup, resolve.root=TRUE)
+experiment = phyloseq(phy3@otu_table, phy3@tax_table, phy3@sam_data, rootedTree) #3149 taxa 
+saveRDS(object = experiment, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_without_salmon.RDS"))
+```
+
+```{r}
+asvs_removed = c(badTaxa, salma_asvs$ASV_name)
+write.csv(asvs_removed, file = paste0(filepath,"/", Sys.Date(), "ASVs_removed_from_dataset.csv"))
+```
+
+```{r}
+salmon_in_bacteria = setdiff(taxa_names(phy2), taxa_names(phy3)) %>% data.frame() %>%
+  mutate(names = as.double(sub(x = salmon_in_bacteria$., replacement = "", pattern = "Zotu")))
+```
+

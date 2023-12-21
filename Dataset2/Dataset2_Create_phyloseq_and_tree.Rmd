@@ -1,0 +1,83 @@
+---
+title: "Dataset1 Create Phyloseq and phylogenetic tree"
+author: "Madeleine Gundersen"
+---
+```{r}
+library("phyloseq")
+library("readxl")
+library("magrittr")
+library("ape")
+library(Bios2cor)
+library(seqinr)
+library(tidyverse)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(rlist)
+library(pipeR)
+library(DECIPHER)
+library(dada2)
+library(phangorn)
+library(ggplot2)
+library(ggtree)
+sessionInfo()
+```
+
+# Phylogenetic tree
+
+```{r}
+# import sequences 
+file_location = "Dataset2/new_sorted_OTUs_new.fasta"
+sequences = Biostrings::readDNAStringSet(filepath = "new_sorted_OTUs_new.fasta", format = "fasta")
+#import the fasta file into object called seqs
+seqs <- dada2::getSequences(object = sequences) #3336 OTUs
+# tip labels are OTU names (i.e. OTU1, OTU10, ect)
+#align OTU sequences using the  DECIPHER package.
+alignment <- AlignSeqs(DNAStringSet(seqs), anchor=NA,verbose=FALSE)
+phangAlign <- phyDat(as(alignment, "matrix"), type="DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm) # Note, tip order != sequence order
+fit = pml(treeNJ, data=phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+                    rearrangement = "stochastic", control = pml.control(trace = 0))
+saveRDS(fitGTR, "new_phylogenetictree_21112019.RDS")
+```
+
+# Phyloseq
+```{r}
+otumatrix = read_delim("OTUrare12.1.txt") %>% as.data.frame()
+row.names(otumatrix) = otumatrix[, 1]
+# deletes the first column
+otumatrix.2 = subset(otumatrix, select = c(colnames(otumatrix)[2:length(otumatrix)]))
+# makes a phyloseq object with an OTU table
+OTU = phyloseq::otu_table(otumatrix.2, taxa_are_rows = TRUE)
+# loads the function to the global enviroment 
+source("/Scripts/import_sintax-file.R")
+taxmat = import_sintax_file("ragnhildiv_promikrobe.sintax",confidence = 0.8)
+TAX = phyloseq::tax_table(taxmat)
+# combine OTU table and taxonomy and name it as "your experiment"
+experiment = phyloseq::phyloseq(OTU, TAX)
+#converts your excel document to a data frame 
+variables = readxl::read_xlsx("variablesOTUrare12.xlsx",sheet = 1) %>% as.data.frame
+#changes the row names to the sample names. These must be the same as the sample names in the OTU file
+row.names(variables)=variables$`Sample`  #Sample names is the column name of the samples 
+#converts the data.frame to phyloseq class
+sam_variables = phyloseq::sample_data(variables)
+#Now integrate the variables into the physeq object experiment
+experiment = phyloseq::merge_phyloseq(experiment, sam_variables)
+#load phylogenetic tree created previously 
+tree = readRDS(file = "new_phylogenetictree_21112019.RDS")
+tree.1 = tree$tree
+#root phylogenetic tree
+tree.unrooted = tree.1
+source(file = "/Scripts/pick_new_outgroup.R")
+#pick_new_outgroup result in the ASV with the longest branch 
+new.outgroup = pick_new_outgroup(tree.unrooted) 
+#Now we root the tree with this otu as root
+rootedTree = ape::root(tree.unrooted, outgroup=new.outgroup, resolve.root=TRUE)
+experiment_merged = phyloseq(OTU, TAX, sam_variables, rootedTree) #dataset contains 3227 taxa
+# makes an RDS file 
+saveRDS(experiment_merged, "Ragnhild_exp_withfylo.rds")
+```
+

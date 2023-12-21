@@ -1,0 +1,314 @@
+
+```{r}
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+```
+
+```{r}
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/"
+filepath_figures = paste0(filepath, "Figures/", Sys.Date(), "Explore_NTIbNTI_")
+
+#import the phyloseq 
+Dataset1_bacteria =  readRDS(paste0(filepath,"Dataset1/2023-04-17_phyloseq_domain_bacteria.RDS"))
+Dataset1_bacteria = phyloseq::filter_taxa(physeq = Dataset1_bacteria, function(x) sum(x)>0 , prune = TRUE)
+Dataset1_withoutoutlier = readRDS(paste0(filepath,"Dataset1/2023-04-17_phyloseq_without_salmon.RDS"))
+Dataset2_full = readRDS(paste0(filepath,"Dataset2/Ragnhild_exp_withfylo.RDS"))
+Dataset2_full = phyloseq::filter_taxa(physeq = Dataset2_full, function(x) sum(x)>0 , prune = TRUE)
+Dataset2_withoutoutlier = readRDS(paste0(filepath,"Dataset2/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS"))
+```
+
+# ASV difference dataset with and without outliers
+## Dataset 1
+```{r}
+# ntaxa removed
+ntaxa(Dataset1_bacteria) - ntaxa(Dataset1_withoutoutlier)
+#percentage of all
+(ntaxa(Dataset1_bacteria) - ntaxa(Dataset1_withoutoutlier) )* 100 /ntaxa(Dataset1_bacteria)
+
+#How many percentage did the removed ASVs make up? 
+removed_asvs = read.csv("Dataset1/OutlierIdentification/ASVs_salma.csv", sep = ";")
+removed_phylo = phyloseq::prune_taxa(x = Dataset1_bacteria, taxa =  removed_asvs$ASV_name)
+reads_removed = data.frame(reads_full = sample_sums(Dataset1_bacteria), 
+           removed_reads = sample_sums(removed_phylo), 
+           sample_data(Dataset1_bacteria)) %>%
+  mutate(percent_removed = removed_reads*100/reads_full) %>%
+  arrange(desc(percent_removed)) 
+reads_removed %>%
+  ggplot2::ggplot(aes(x = Sample_type, y = percent_removed)) + 
+  geom_point() +  
+  theme_bw()
+reads_removed %>%
+  dplyr::group_by(Sample_type) %>%
+  summarise(n=n(), 
+            av_percent = mean(percent_removed), sd  = sd(percent_removed), 
+            max = max(percent_removed), min  = min(percent_removed)) 
+```
+
+## Dataset 2
+```{r}
+ntaxa(Dataset2_full) - ntaxa(Dataset2_withoutoutlier)
+#percentage of all
+(ntaxa(Dataset2_full) - ntaxa(Dataset2_withoutoutlier) )* 100 /ntaxa(Dataset2_full)
+#How many percentage did the removed ASVs make up? 
+# Extract the taxon names from each object
+quality_data = Dataset2_withoutoutlier
+taxa1 <- taxa_names(tax_table(Dataset2_full))
+taxa2 <- taxa_names(tax_table(quality_data))
+# Find the taxa that are unique to phyloseq_object1
+unique_taxa <- setdiff(taxa1,taxa2)
+removed_phylo = phyloseq::prune_taxa(x = Dataset2_full, taxa_names(Dataset2_full) %in% unique_taxa)
+reads_removed = data.frame(reads_full = sample_sums(Dataset2_full), 
+           removed_reads = sample_sums(removed_phylo), 
+           sample_data(Dataset2_full)) %>%
+  mutate(percent_removed = removed_reads*100/reads_full) %>%
+  arrange(desc(percent_removed)) 
+reads_removed %>%
+  mutate(Larvea = case_when(SampleType == "FISH"~"Fish", TRUE ~"not_fish")) %>%
+  dplyr::group_by(Larvea) %>%
+  summarise(n_samples=n(), 
+            n_samples_with_removed_reads = sum(removed_reads>0), 
+            average_percent = round(mean(percent_removed),3), 
+            sd_percent  = round(sd(percent_removed),3), 
+            max_percent = round(max(percent_removed),3), min  = min(percent_removed)) 
+```
+
+# Beta diversity
+## Dataset 1: Compare with and without Salmon
+```{r}
+sample_names(Dataset1_bacteria) = paste0(sample_names(Dataset1_bacteria),"_d_bacteria")
+sample_data(Dataset1_bacteria)$type = "d_bacteria"
+sample_names(Dataset1_withoutoutlier) = paste0(sample_names(Dataset1_withoutoutlier),"_no_salmon")
+sample_data(Dataset1_withoutoutlier)$type = "no_salmon"
+Dataset1_withoutoutlier@phy_tree = Dataset1_bacteria@phy_tree
+ps_merged = merge_phyloseq(Dataset1_bacteria, Dataset1_withoutoutlier)
+set.seed(3003)
+physeq = ps_merged
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "bray", type = "samples", binary = FALSE))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_BC = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_BC$indice = "Bray-Curtis"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "bray", type = "samples", binary = TRUE))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_Sor = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_Sor$indice = "Sørensen"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "UniFrac", type = "samples"))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_uni = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_uni$indice = "UniFrac"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "WUniFrac", type = "samples"))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_wuni = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_wuni$indice = "W_UniFrac"
+beta_all = bind_rows(distance_df_BC, distance_df_Sor, distance_df_uni, distance_df_wuni)
+beta_all_merged = beta_all 
+beta_all_merged$value = 1-beta_all_merged$value #converts to similarity
+colnames(beta_all_merged)[3] = "Similarity"
+sample_data(physeq)$Sample_name = rownames(physeq@sam_data)
+distance_df = beta_all_merged
+distance_df = na.omit(distance_df)
+col_keep = c("Sample", "Sample_type", "Flask","Individual", "DPE", "Selection", "type", "Sample_name")
+metaA = data.frame(sample_data(physeq)) %>% dplyr::select(col_keep)
+colnames(metaA) = paste0(colnames(metaA), "_A") 
+metaB = data.frame(sample_data(physeq)) %>% dplyr::select(col_keep)
+colnames(metaB) = paste0(colnames(metaB), "_B") 
+colnames(distance_df)[1:2] = c("Sample_name_A", "Sample_name_B")
+distance_df_a = merge(distance_df, metaA, by = "Sample_name_A")
+distance_df_both = merge(distance_df_a, metaB, by = "Sample_name_B")
+distance_df_both = distance_df_both %>% 
+  mutate(type = case_when(indice %in% c("Bray-Curtis", "W_UniFrac" )~"Abundance", 
+                          indice %in% c("Sørensen", "UniFrac" )~"Incidence"))
+distance_df_both_same = distance_df_both %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) 
+sample_data(Dataset1_bacteria)$richness_d = 
+  vegan::renyi(t(as.data.frame(Dataset1_bacteria@otu_table)), scales = c(0), hill = TRUE)  
+sample_data(Dataset1_withoutoutlier)$richness_s = 
+  vegan::renyi(t(as.data.frame(Dataset1_withoutoutlier@otu_table)), scales = c(0), hill = TRUE)  
+richness1 = sample_data(Dataset1_bacteria) %>% data.frame() %>% select(Sample,richness_d)
+richness2 = sample_data(Dataset1_withoutoutlier) %>% data.frame() %>% select(Sample,richness_s)
+richness_diff = left_join(richness1, richness2) %>% 
+  mutate(richness_difference = richness_d-richness_s, 
+         Sample_A = Sample)
+Dataset1_distance_df_both_same2= left_join(distance_df_both_same,richness_diff) 
+#saveRDS(object = Dataset1_distance_df_both_same2, 
+#        file = "Dataset1/Results/2023-06-27_Betadiversity_fullvswithout-outliers.RDS")
+```
+
+## Dataset 2
+```{r}
+sample_names(Dataset2_full) = paste0(sample_names(Dataset2_full),"_full")
+sample_data(Dataset2_full)$type = "d_bacteria"
+sample_names(Dataset2_withoutoutlier) = paste0(sample_names(Dataset2_withoutoutlier),"_quality_data")
+sample_data(Dataset2_withoutoutlier)$type = "no_salmon"
+Dataset2_withoutoutlier@phy_tree = Dataset2_full@phy_tree
+ps_merged = merge_phyloseq(Dataset2_full, Dataset2_withoutoutlier)
+set.seed(3003)
+physeq = ps_merged
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "bray", type = "samples", binary = FALSE))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_BC = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_BC$indice = "Bray-Curtis"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "bray", type = "samples", binary = TRUE))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_Sor = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_Sor$indice = "Sørensen"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "UniFrac", type = "samples"))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_uni = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_uni$indice = "UniFrac"
+dist_matrix = as.matrix(phyloseq::distance(physeq = physeq, method = "WUniFrac", type = "samples"))
+dist_matrix[upper.tri(dist_matrix)] <- NA
+distance_df_wuni = reshape2::melt(dist_matrix, varnames = c("Sample_A", "Sample_B"))
+distance_df_wuni$indice = "W_UniFrac"
+beta_all = bind_rows(distance_df_BC, distance_df_Sor, distance_df_uni, distance_df_wuni)
+beta_all_merged = beta_all 
+beta_all_merged$value = 1-beta_all_merged$value #converts to similarity
+colnames(beta_all_merged)[3] = "Similarity"
+sample_data(physeq)$Sample_name = rownames(physeq@sam_data)
+distance_df = beta_all_merged
+distance_df = na.omit(distance_df)
+col_keep = c("Sample", "Sample_type", "Flask","Individual", "DPE", "Selection", "type", "Sample_name")
+metaA = data.frame(sample_data(physeq)) %>% dplyr::select(col_keep)
+colnames(metaA) = paste0(colnames(metaA), "_A") 
+metaB = data.frame(sample_data(physeq)) %>% dplyr::select(col_keep)
+colnames(metaB) = paste0(colnames(metaB), "_B") 
+colnames(distance_df)[1:2] = c("Sample_name_A", "Sample_name_B")
+distance_df_a = merge(distance_df, metaA, by = "Sample_name_A")
+distance_df_both = merge(distance_df_a, metaB, by = "Sample_name_B")
+distance_df_both = distance_df_both %>% 
+  mutate(type = case_when(indice %in% c("Bray-Curtis", "W_UniFrac" )~"Abundance", 
+                          indice %in% c("Sørensen", "UniFrac" )~"Incidence"))
+distance_df_both_same = distance_df_both %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) 
+sample_data(Dataset2_full)$richness_d = vegan::renyi(t(as.data.frame(Dataset2_full@otu_table)), scales = c(0), hill = TRUE)  
+sample_data(Dataset2_withoutoutlier)$richness_s = vegan::renyi(t(as.data.frame(Dataset2_withoutoutlier@otu_table)), scales = c(0), hill = TRUE)  
+richness1 = sample_data(Dataset2_full) %>% data.frame() %>% select(Sample,richness_d)
+richness2 = sample_data(Dataset2_withoutoutlier) %>% data.frame() %>% select(Sample,richness_s)
+richness_diff = left_join(richness1, richness2) %>% 
+  mutate(richness_difference = richness_d-richness_s, 
+         Sample_A = Sample)
+Dataset2_distance_df_both_same2= left_join(distance_df_both_same,richness_diff) 
+#saveRDS(object = Dataset2_distance_df_both_same2, file = #"Dataset2/Results/2023-05-05_Ragnhild_Cod_beta_diversity_full_vs_quality.RDS")
+```
+
+## Plot
+```{r}
+Dataset1_distance_df_both_same2 = readRDS(file = "Dataset1/Results/2023-06-27_Betadiversity_fullvswithout-outliers.RDS")
+Dataset2_distance_df_both_same2 = readRDS(file = "Dataset2/Results/2023-05-05_Ragnhild_Cod_beta_diversity_full_vs_quality.RDS")
+
+sim_D1 = Dataset1_distance_df_both_same2 %>%  
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>%
+    mutate(Sample_type_A = case_when(Sample_type_A == "Gut" ~ "Salmon gut",
+                                  T ~Sample_type_A)) %>%
+  mutate(indice = case_when(indice == "UniFrac" ~ "uw_UniFrac", 
+                              indice == "W_UniFrac" ~ "w_UniFrac", T ~indice)) %>%
+    ggplot2::ggplot(aes(y = Similarity, x = richness_difference, shape = Selection_A,  fill = Sample_type_A )) +
+    geom_point(size = 3, position = position_dodge(width = 0.2)) + 
+  facet_grid(~indice, scales = "free", ) + 
+  theme_bw() + 
+  scale_shape_manual(values = c(21,23), "Selection") + 
+  scale_fill_manual(values = cbPalette[c(3, 2, 1)])+
+  ggtitle("a) Dataset 1") + 
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  xlab("ASVs removed per sample") + 
+  theme(text = element_text(size = 13)) + 
+  ylab("Similarity per sample")
+
+sim_D2 = Dataset2_distance_df_both_same2 %>%  
+  mutate(SampleType_A = case_when(SampleType_A == "other" ~ "Feed",
+                                  SampleType_A == "FEED" ~ "Feed",
+                                  SampleType_A == "FISH" ~ "Cod larvae",
+                                  SampleType_A == "INCOMING" ~ "Intake water",
+                                  SampleType_A == "WATER" ~ "Rearing water",
+                                  T ~SampleType_A)) %>%
+    mutate(indice = case_when(indice == "UniFrac" ~ "uw_UniFrac", 
+                              indice == "W_UniFrac" ~ "w_UniFrac", T ~indice)) %>%
+  
+  ggplot2::ggplot(aes(y = Similarity, x = richness_difference, shape = System_A, fill = SampleType_A)) + 
+  geom_point(size = 3, position = position_dodge(width = 0.2)) + 
+  facet_grid(~indice, scales = "free", ) + 
+  theme_bw() + 
+  scale_shape_manual(values = c(21,23, 24), "System") + 
+  scale_fill_manual(values = cbPalette[c(1, 4, 3, 2)])+
+  ggtitle("b) Dataset 2") + 
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  xlab("OTUs removed per sample") + 
+  theme(text = element_text(size = 13)) + 
+  ylab("Similarity per sample")
+
+ggpubr::ggarrange(sim_D1, sim_D2, nrow = 2)
+ggsave(filename = paste0(filepath_figures, "Similarity_full_vs_quality.png"), width = 180, height = 150, units = "mm")
+```
+# Average beta diversity
+## Dataset1
+```{r}
+Dataset1_distance_df_both_same2 %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>% 
+  group_by(indice, Sample_type_A) %>% 
+  summarise(sim_mean = round(mean(Similarity),2), sd = round(sd(Similarity), 2))
+
+Dataset1_distance_df_both_same2 %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>% 
+  group_by(indice) %>% 
+  summarise(sim_mean = round(mean(Similarity),2), sd = round(sd(Similarity), 2))
+
+Dataset1_distance_df_both_same2 %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>% 
+  filter(Similarity<0.95) %>% 
+  group_by(indice) %>%
+  summarise(n=n())
+
+Dataset1_distance_df_both_same2 %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>% 
+  group_by(indice) %>%
+  summarise(n=n())
+
+Dataset1_distance_df_both_same2 %>% 
+  filter(Sample_name_B != Sample_name_A, 
+         Sample_A == Sample_B) %>% 
+  group_by(indice) %>%
+  summarise(n=n())
+
+82*100/88
+```
+
+## Dataset 2
+```{r}
+Dataset2_distance_df_both_same2 %>% 
+  filter(Sample_B != Sample_A,
+         SampleID_A == SampleID_B) %>% 
+  group_by(indice, SampleType_A) %>% 
+  summarise(sim_mean = round(mean(Similarity),3), sd = round(sd(Similarity), 3))
+
+Dataset2_distance_df_both_same2 %>% 
+  filter(Sample_B != Sample_A,
+         SampleID_A == SampleID_B)  %>% 
+  group_by(indice) %>% 
+  summarise(sim_mean = round(mean(Similarity),2), sd = round(sd(Similarity), 3), 
+            min = min(Similarity))
+
+Dataset2_distance_df_both_same2 %>% 
+  filter(Sample_B != Sample_A,
+         SampleID_A == SampleID_B) %>% 
+  filter(Similarity<0.95) %>% 
+  group_by(indice) %>%
+  summarise(n=n())
+
+Dataset2_distance_df_both_same2 %>% 
+  filter(Sample_B != Sample_A,
+         SampleID_A == SampleID_B)  %>% 
+  group_by(indice) %>%
+  summarise(n=n())
+51*100/197
+```
+
+

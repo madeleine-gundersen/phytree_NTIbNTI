@@ -1,0 +1,192 @@
+```{r, message=FALSE}
+library(iCAMP)
+library(dplyr)
+library(ggplot2)
+library(ggh4x)
+library(phyloseq)
+
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub"
+filepath_results =paste0(filepath,"/results/", Sys.Date(), "_Exploring_pitfall_")
+filepath_figures = paste0(filepath, "/figures/" , Sys.Date(), "_Exploring_pitfall_")
+```
+
+# Dataset 1
+```{r, message=FALSE}
+#import the phyloseq 
+data_ASVs =  readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Dataset1/2023-04-17_phyloseq_domain_bacteria.RDS")
+not_salmon = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Dataset1/2023-04-17_phyloseq_without_salmon.RDS")
+```
+
+## NTI
+```{r}
+set.seed(3003)
+#NTI
+exp = data_ASVs
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_domain-bacteria-3186ASVs.RDS"))
+
+exp = not_salmon
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_not-salmon-3149ASVs.RDS"))
+```
+
+## bNTI
+```{r}
+#QPEN
+data = data_ASVs
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_domain-bacteria-3186ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_domain-bacteria-3186ASVs.RDS"))
+
+data = not_salmon
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_not-salmon-3149ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_not-salmon-3149ASVs.RDS"))
+```
+
+# Dataset 2
+```{r}
+#import the phyloseq 
+full_data =  readRDS(paste0(filepath, "/Dataset2/Ragnhild_exp_withfylo.rds"))
+quality_data = readRDS(paste0(filepath, "/Dataset2/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS"))
+```
+
+## NTI 
+```{r}
+set.seed(3003)
+#NTI
+exp = full_data
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_full_data.RDS"))
+
+exp = quality_data
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_quality_data.RDS"))
+```
+
+## bNTI
+```{r}
+#QPEN
+data = full_data
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_full_data.RDS"))
+```
+
+```{r}
+full_data_fish = subset_samples(physeq = full_data, SampleType == "FISH") 
+ASV_tab = t(as.matrix(full_data_fish@otu_table@.Data)) #community data with samples as rows and species as cols
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_full_data_fish.RDS"))
+
+full_data_water = subset_samples(physeq = full_data, SampleType == "WATER") 
+ASV_tab = t(as.matrix(full_data_water@otu_table@.Data)) #community data with samples as rows and species as cols
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_full_data_water.RDS"))
+
+data = quality_data
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_quality_data.RDS"))
+
+quality_data_fish = subset_samples(physeq = quality_data, SampleType == "FISH") 
+ASV_tab = t(as.matrix(quality_data_fish@otu_table@.Data)) #community data with samples as rows and species as cols
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_quality_data_fish.RDS"))
+
+quality_data_water = subset_samples(physeq = quality_data, SampleType == "WATER") 
+ASV_tab = t(as.matrix(quality_data_water@otu_table@.Data)) #community data with samples as rows and species as cols
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_quality_data_water.RDS"))
+```

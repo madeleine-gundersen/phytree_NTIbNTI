@@ -1,0 +1,151 @@
+```{r}
+library(phyloseq)
+library(dplyr)
+all =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 4 Ragnhild_Vestrum_prosjekt/Analyse/Error in phylogenetic tree/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS") #3294
+full =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 4 Ragnhild_Vestrum_prosjekt/Analyse/Dataset/Ragnhild_exp_withfylo.rds") 
+
+taxa_df <- data.frame(taxaID = rownames(tax_table(full)), tax_table(full))
+tax_table(full) = tax_table(as.matrix(taxa_df))
+
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations"
+filepath_results =paste0( "C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/results/", Sys.Date(), "_QPEN-exploration-thesis_Ranghild")
+filepath_figures = paste0("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/figures/" , Sys.Date(), "_QPEN-exploration-thesis_")
+```
+
+```{r}
+# Name title to be displayed in plot
+dataset_title = "a) All sequences"
+
+# Display the tree in a circular layout using the ggtree package
+ggtree_obj = ggtree::ggtree(full) + 
+  ggtree::layout_circular()
+
+not_outliers = tax_table(all) %>% data.frame() %>% select(taxaID)
+outliers = subset_taxa(physeq = full, !taxaID %in%  not_outliers$taxaID) 
+outliers_names = tax_table(outliers) %>% data.frame() %>% select(taxaID)
+
+# Identify outliers
+long_branch_taxa = ggtree_obj$data$label[ggtree_obj$data$label %in% outliers_names$taxaID ]
+# Find number and names of outlier taxa 
+long_branch_taxa_df = data.frame(outliers = long_branch_taxa) %>% unique() %>% na.omit()
+
+# Highlight taxa with long branch lengths in red
+# Display the updated tree
+withoutliers = ggtree_obj + 
+  ggtree::geom_tippoint(aes(color = ifelse(label %in% long_branch_taxa, "Outlier", "Normal")), 
+                        size = 2) +
+  ggplot2::scale_color_manual(values = c("Normal" = "black", "Outlier" = "red")) +
+  ggplot2::theme(legend.position = "right", 
+                 legend.title = element_blank()) + 
+  ggplot2::ggtitle(label = paste0(dataset_title, " ", ntaxa(full), " OTUs"), 
+                   subtitle = paste0(nrow(long_branch_taxa_df), " outliers"))
+
+
+# Save the plot if desired
+plotname = "Phylogenetic_tree_all_sequences_with_outliers"
+ggplot2::ggsave(filename = paste0(filepath_results, plotname, ".png"), width = 4, height = 4)
+```
+```{r}
+# Name title to be displayed in plot
+dataset_title = "b) Without outliers"
+
+# Display the tree in a circular layout using the ggtree package
+ggtree_obj = ggtree::ggtree(all) + 
+  ggtree::layout_circular()
+
+# Highlight taxa with long branch lengths in red
+# Display the updated tree
+without_outliers = ggtree_obj + 
+  ggtree::geom_tippoint(                        size = 2) +
+  ggplot2::theme(legend.position = "none", 
+                 legend.title = element_blank()) + 
+  ggplot2::ggtitle(label = paste0(dataset_title, " ", ntaxa(all), " OTUs"))
+# Save the plot if desired
+plotname = "Phylogenetic_tree_all_sequences_without_outliers"
+ggplot2::ggsave(filename = paste0(filepath_results, plotname, ".png"), width = 3, height = 3)
+```
+```{r}
+ggarrange(withoutliers, without_outliers, align = "h", widths = c(0.5, 0.5), common.legend = T, 
+          legend = "none")
+ggplot2::ggsave(filename = paste0(filepath_results, "Cod_dataset_phylotree_summary.png"), width = 7, height = 4)
+```
+```{r}
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 4 Ragnhild_Vestrum_prosjekt/Analyse/Error in phylogenetic tree/"
+outliers = bind_rows(
+  readRDS(file = paste0(filepath,"2023-05-04_Quality_control_decition.RDS")),
+  readRDS(file = paste0(filepath,"2023-05-04_Cycle2Quality_control_decition.RDS")),
+  readRDS(file = paste0(filepath,"2023-05-04_Cycle3_Quality_control_decition.RDS")),
+  readRDS(file = paste0(filepath,"2023-05-04_Cycle4_Quality_control_decition.RDS")) ) %>%
+  filter(Decition == "OUTLIER")
+
+View(outliers %>% select(Query, taxonomy) %>% unique())
+```
+
+
+# Salmon
+
+```{r}
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations"
+filepath_results =paste0( "C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/results/", Sys.Date(), "_QPEN-exploration-thesis_")
+filepath_figures = paste0("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/figures/" , Sys.Date(), "_QPEN-exploration-thesis_")
+data_ASVs =  readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/2023-04-17_phyloseq_domain_bacteria.RDS")
+not_salmon = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/2023-04-17_phyloseq_without_salmon.RDS")
+```
+
+```{r}
+# Name title to be displayed in plot
+dataset_title = "a) Filtered domain Bacteria"
+
+# Display the tree in a circular layout using the ggtree package
+ggtree_obj = ggtree::ggtree(data_ASVs) + 
+  ggtree::layout_circular()
+                
+not_outliers = unique(c(taxa_names(not_salmon)))
+outliers <- setdiff(taxa_names(data_ASVs), not_outliers)
+
+# Identify outliers
+long_branch_taxa = ggtree_obj$data$label[ggtree_obj$data$label %in% outliers]
+# Find number and names of outlier taxa 
+long_branch_taxa_df = data.frame(outliers = long_branch_taxa) %>% unique() %>% na.omit()
+
+# Highlight taxa with long branch lengths in red
+# Display the updated tree
+withoutliers = ggtree_obj + 
+  ggtree::geom_tippoint(aes(color = ifelse(label %in% long_branch_taxa, "Outlier", "Normal")), 
+                        size = 2) +
+  ggplot2::scale_color_manual(values = c("Normal" = "black", "Outlier" = "red")) +
+  ggplot2::theme(legend.position = "none", 
+                 legend.title = element_blank()) + 
+  ggplot2::ggtitle(label = paste0(dataset_title, " ", ntaxa(data_ASVs), " ASVs"), 
+                   subtitle = paste0(nrow(long_branch_taxa_df), " outliers"))
+
+
+# Save the plot if desired
+plotname = "Salmon_Phylogenetic_tree_all_sequences_with_outliers"
+#ggplot2::ggsave(filename = paste0(filepath_results, plotname, ".png"), width = 4, height = 4)
+```
+```{r}
+# Name title to be displayed in plot
+dataset_title = "b) Without outliers"
+
+# Display the tree in a circular layout using the ggtree package
+ggtree_obj = ggtree::ggtree(not_salmon) + 
+  ggtree::layout_circular()
+
+# Highlight taxa with long branch lengths in red
+# Display the updated tree
+without_outliers = ggtree_obj + 
+  ggtree::geom_tippoint(                        size = 2) +
+  ggplot2::theme(legend.position = "none", 
+                 legend.title = element_blank()) + 
+  ggplot2::ggtitle(label = paste0(dataset_title, " ", ntaxa(not_salmon), " ASVs"))
+# Save the plot if desired
+plotname = "Salmon_Phylogenetic_tree_all_sequences_without_outliers"
+#ggplot2::ggsave(filename = paste0(filepath_results, plotname, ".png"), width = 3, height = 3)
+```
+```{r}
+ggpubr::ggarrange(withoutliers, without_outliers, align = "h", widths = c(0.5, 0.5), common.legend = T, 
+          legend = "none")
+ggplot2::ggsave(filename = paste0(filepath_results, "Salmon_dataset_phylotree_summary.png"), width = 7, height = 3)
+```

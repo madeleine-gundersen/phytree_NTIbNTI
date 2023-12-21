@@ -1,0 +1,148 @@
+---
+title: "Phylogenetic signal"
+---
+
+```{r}
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations"
+filepath_results =paste0( "C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/results/", Sys.Date(), "_QPEN-exploration-thesis_")
+filepath_figures = paste0("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/figures/" , Sys.Date(), "_QPEN-exploration-thesis_")
+source(file = paste0(filepath, "/pick_new_outgroup.R"))
+
+cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+
+all = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/2023-04-17_phyloseq_without_salmon.RDS")
+```
+
+```{r}
+# Required objects
+## OTU table with relative abundances (class: matrix or data.frame)
+otu_tab = (all@otu_table@.Data)
+## Phylogenetic tree (class: phylo)
+phy = phy_tree(all)
+## Matrix with relevant environmental parameters (class: matrix or data.frame)
+env = (sample_data(all))
+env = as_data_frame(env)
+#reformat to be numeric
+env1 = env %>% mutate(Sample_type = as.numeric(as.factor(Sample_type)), 
+               Flask = as.numeric(as.factor(Flask)), 
+               Selection = as.numeric(as.factor(Selection)), 
+               Strain = as.numeric(as.factor(Strain))) %>%
+  select(!Density_cell_uL) %>%
+  select(!Sample)
+
+# Make sure that OTUs in the OTU table occur in the same order as on the tips of the phylogenetic tree
+identical(rownames(otu_tab), phy$tip.label)
+
+# Calculate relative abundance-weighted means for the environmental parameters
+## Create empty matrix with as many rows as the OTU table and as many columns as the matrix with environmental parameters
+wt_means <- matrix(rep(NA, nrow(otu_tab) * ncol(env1)), nrow = nrow(otu_tab), ncol = ncol(env1))
+
+## For each OTU, calculate the weighted means for the individual environmental parameters
+for(i in 1:nrow(otu_tab)){
+  wt_means[i, ] <- apply(env1, MARGIN = 2, function(x) weighted.mean(x, otu_tab[i, ]))
+}
+## Standardize wieghted means to z-scores (the "decostand" function of the vegan package is used here, but you could also use the regular base "scale" function, or any other method to standardize the variables)
+wt_means <- vegan::decostand(wt_means, MARGIN = 2, method = "standardize")
+# Calculate phylogenetic distances
+phy_dist <- ape::cophenetic.phylo(phy)
+## Standardize distances to percentages of the maximum distance
+phy_dist <- phy_dist / max(phy_dist)
+# Calculate Mantel correlograms to evaluate phylogenetic signal (here, correlations are evaluated at phylogenetic distance steps of 2%, i.e. 50 distance class steps in total; you can change this by adjusting "n.class")
+## Note: this make take a while especially for large datasets with lot of OTUs
+phy_sig_1 <- vegan::mantel.correlog(dist(wt_means), phy_dist, cutoff = FALSE, nperm = 999, mult = "holm", progressive = TRUE, n.class = 50)
+saveRDS(object =phy_sig_1, file =  paste0(filepath_results, "phylogenetic_signal_without_error_sequences.RDS"))
+```
+
+```{r}
+phy_sig_1 = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/results/2023-04-25_QPEN-exploration-thesis_phylogenetic_signal_without_error_sequences.RDS")
+mantel_df = phy_sig_1$mantel.res %>% data.frame() 
+colnames(mantel_df) = c("phy_dist", "n_dist", "mantel_correlation", "p_mantel", "p_corrected_mantel")
+salmon_sig =mantel_df %>% 
+  mutate(Significant = case_when(p_corrected_mantel < 0.05 ~ "S", 
+                                 T ~ "n.s.")) %>% 
+  ggplot(aes(x=phy_dist, y = mantel_correlation, ) ) + 
+
+  theme_bw(base_size = 10) + 
+  xlab("Phylogenetic distance") + 
+  ylab("Mantel Test Statistic (Pearson's r)") + 
+  geom_hline(yintercept = 0, linetype = "dashed") +  geom_point(size = 2, aes(shape = Significant))  + 
+  ggtitle("a) Dataset 1 - Salmon alevins")
+
+ggsave(filename = paste0(filepath_figures, "Mantel_correlogram_all.png"), width = 7, height = 4)
+```
+
+
+# Cod larvae
+```{r}
+all =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 4 Ragnhild_Vestrum_prosjekt/Analyse/Error in phylogenetic tree/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS")
+# Required objects
+## OTU table with relative abundances (class: matrix or data.frame)
+otu_tab = (all@otu_table@.Data)
+## Phylogenetic tree (class: phylo)
+phy = phy_tree(all)
+## Matrix with relevant environmental parameters (class: matrix or data.frame)
+env = (sample_data(all))
+env = as_data_frame(env)
+
+#reformat to be numeric
+env1 = env %>% mutate(SampleType = as.numeric(as.factor(SampleType)), 
+               System = as.numeric(as.factor(System)), 
+               Tank = as.numeric(as.factor(Tank))) %>%
+  select(!Day_ch) %>%
+  select(!FishID) %>%
+  select(!SampleID)
+```
+
+
+```{r}
+# Make sure that OTUs in the OTU table occur in the same order as on the tips of the phylogenetic tree
+identical(rownames(otu_tab), phy$tip.label)
+
+# Calculate relative abundance-weighted means for the environmental parameters
+## Create empty matrix with as many rows as the OTU table and as many columns as the matrix with environmental parameters
+wt_means <- matrix(rep(NA, nrow(otu_tab) * ncol(env1)), nrow = nrow(otu_tab), ncol = ncol(env1))
+
+## For each OTU, calculate the weighted means for the individual environmental parameters
+for(i in 1:nrow(otu_tab)){
+  wt_means[i, ] <- apply(env1, MARGIN = 2, function(x) weighted.mean(x, otu_tab[i, ]))
+}
+## Standardize wieghted means to z-scores (the "decostand" function of the vegan package is used here, but you could also use the regular base "scale" function, or any other method to standardize the variables)
+wt_means <- vegan::decostand(wt_means, MARGIN = 2, method = "standardize")
+# Calculate phylogenetic distances
+phy_dist <- ape::cophenetic.phylo(phy)
+## Standardize distances to percentages of the maximum distance
+phy_dist <- phy_dist / max(phy_dist)
+# Calculate Mantel correlograms to evaluate phylogenetic signal (here, correlations are evaluated at phylogenetic distance steps of 2%, i.e. 50 distance class steps in total; you can change this by adjusting "n.class")
+## Note: this make take a while especially for large datasets with lot of OTUs
+phy_sig_1 <- vegan::mantel.correlog(dist(wt_means), phy_dist, cutoff = FALSE, nperm = 999, mult = "holm", progressive = TRUE, n.class = 50)
+saveRDS(object =phy_sig_1, file =  paste0(filepath_results, "phylogenetic_signal_without_error_sequences_Cod_larvaldataset.RDS"))
+```
+
+```{r}
+phy_sig_1 = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 QPEN simulations/results/2023-05-15_QPEN-exploration-thesis_phylogenetic_signal_without_error_sequences_Cod_larvaldataset.RDS")
+mantel_df = phy_sig_1$mantel.res %>% data.frame() 
+colnames(mantel_df) = c("phy_dist", "n_dist", "mantel_correlation", "p_mantel", "p_corrected_mantel")
+cod_plot = mantel_df %>% 
+  mutate(Significant = case_when(p_corrected_mantel < 0.05 ~ "S", 
+                                 T ~ "n.s.")) %>% 
+  ggplot(aes(x=phy_dist, y = mantel_correlation, ) ) + 
+
+  theme_bw(base_size = 10) + 
+  xlab("Phylogenetic distance") + 
+  ylab("Mantel Test Statistic (Pearson's r)") + 
+  geom_hline(yintercept = 0, linetype = "dashed") +  geom_point(size = 2, aes(shape = Significant)) + 
+    ggtitle("b) Dataset 2 - Cod larvea")
+
+
+ggsave(filename = paste0(filepath_figures, "Mantel_correlogram_cod.png"), width = 7, height = 4)
+```
+
+```{r, fig.height=6, fig.width=8}
+ggarrange(salmon_sig, cod_plot, nrow = 2, common.legend = T, legend = "right")
+ggsave(filename = paste0(filepath_figures, "phylogenetic_signal.png"), height = 5, width = 8)
+```
+

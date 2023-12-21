@@ -1,0 +1,482 @@
+```{r}
+#libraries
+library(phyloseq)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub"
+filepath_results =paste0( "C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results", Sys.Date(), "_Exploring_phytree_")
+filepath_figures = paste0("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Figures/" , Sys.Date(), "_Exploring_phytree_")
+
+cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+conf3 =function(x) { #x is a dataframe
+  r <- c(mean(x) - sd(x),
+         mean(x)-sd(x),
+         mean(x),
+         mean(x)+sd(x), 
+         mean(x) + sd(x))
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax") 
+  r}
+```
+
+# NTI data 
+## Dataset 1
+```{r}
+#import the phyloseq 
+all = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Dataset1/2023-04-17_phyloseq_without_salmon.RDS")
+all_NTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-17_QPEN-exploration-thesis_NTI_999runs_not-salmon-3149ASVs.RDS")
+no_intake_NTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-20_QPEN-exploration-thesis_NTI_999runs_no-intake-2509ASVs.RDS")
+gut_NTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-20_QPEN-exploration-thesis_NTI_999runs_only-gut-2106ASVs.RDS")
+
+keep = c("Sample", "NTI")
+NTI_Dataset1 = left_join(left_join(
+  left_join(all_NTI %>% mutate(Sample = rownames(all_NTI)) %>%  select(keep) %>% rename(NTI_all = NTI) ,
+            no_intake_NTI %>% mutate(Sample = rownames(no_intake_NTI)) %>% select(keep) %>% rename(NTI_no_intake = NTI) ) ,
+  gut_NTI %>% mutate(Sample = rownames(gut_NTI)) %>% select(keep)%>% rename(NTI_gut = NTI)  ),
+  sample_data(all) %>% data.frame() ) %>%
+  select(-Density_cell_uL) %>% filter(Sample_type != "Intake water") 
+```
+
+## Dataset 2
+```{r}
+all = readRDS(paste0(filepath, "/Dataset2/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS"))
+all_NTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-05_Ragnhild_Cod_NTI_999runs_quality_data.RDS")
+no_intake_NTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-10_QPEN-exploration-thesis_RanghildNTI_999runs_only_tank-3064ASVs.RDS")
+gut_NTI =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-10_QPEN-exploration-thesis_RanghildNTI_999runs_only-gut-1883ASVs.RDS")
+
+keep = c("Sample", "NTI")
+
+NTI_Dataset2 = left_join(left_join(left_join(all_NTI %>% mutate(Sample = rownames(all_NTI)) %>%   
+                                               select(keep) %>%   rename(NTI_all = NTI) ,
+                                    no_intake_NTI %>% mutate(Sample = rownames(no_intake_NTI)) %>% 
+                                      select(keep) %>%  rename(NTI_no_intake = NTI) ) ,
+                          gut_NTI %>%   mutate(Sample = rownames(gut_NTI)) %>% select(keep) %>%   
+                            rename(NTI_gut = NTI) ),  
+                         sample_data(all) %>% data.frame() %>% mutate(Sample = SampleID), by = "Sample" ) %>%
+  filter(SampleType %in% c("FISH", "WATER")) %>%
+  mutate(SampleType = case_when(SampleType == "INCOMING" ~ "Intake water", 
+                                SampleType == "WATER" ~ "Rearing water", 
+                                SampleType == "FISH"~ "Cod larvea"))
+```
+#bNTI 
+## Dataset 1
+```{r}
+all = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Dataset1/2023-04-17_phyloseq_without_salmon.RDS")
+all_bNTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-17_QPEN-exploration-thesis_qpen-result-df_not-salmon-3149ASVs.RDS")
+no_intake_bNTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-20_QPEN-exploration-thesis_qpen-result-df_no-intake-2509ASVs.RDS")
+gut_bNTI =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-04-20_QPEN-exploration-thesis_qpen-result-df_only-gut-2106ASVs.RDS")
+
+meta_salmon = data.frame(sample_data(all))
+bNTI_Dataset1 = all_bNTI$result %>% 
+  select(sample1, sample2, bNTI) %>% 
+  dplyr::rename(Sample_A = sample1, Sample_B = sample2, bNTI_full = bNTI) %>%
+  left_join(., 
+            no_intake_bNTI$result%>% select(sample1, sample2, bNTI) %>% 
+              dplyr::rename(Sample_A = sample1, Sample_B = sample2, bNTI_nointake = bNTI), 
+            by = join_by(Sample_A, Sample_B)) %>% 
+  left_join(., 
+            gut_bNTI$result%>% select(sample1, sample2, bNTI) %>% 
+              dplyr::rename(Sample_A = sample1, Sample_B = sample2, bNTI_gut = bNTI), 
+            by = join_by(Sample_A, Sample_B)) %>% 
+  left_join(., meta_salmon %>% rename_all(~paste0(., "_A")), by = "Sample_A" ) %>%
+  left_join(., meta_salmon %>% rename_all(~paste0(., "_B")), by = "Sample_B") %>% 
+  filter(Sample_type_A != "Intake water") %>%
+  filter(Sample_type_A == Sample_type_B, Selection_A == Selection_B) %>%
+  mutate(selection = paste0(Selection_A,"_vs_", Selection_B), 
+                   flasks = paste0(Flask_A,"_vs_", Flask_B), 
+                   sample_types = paste0(Sample_type_A,"_vs_", Sample_type_B)) %>% 
+  dplyr::mutate(selection = replace(selection, selection == "r_vs_K", "K_vs_r"))
+```
+
+## Dataset 2
+```{r}
+all = readRDS(paste0(filepath, "/Dataset2/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS"))
+no_intake_bNTI = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-10_QPEN-exploration-thesis_Ranghildqpen-result-df_only_tank-3064ASVs.RDS")
+gut_bNTI =readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-10_QPEN-exploration-thesis_Ranghildqpen-result-df_only-gut-1883ASVs.RDS")
+qpen_ASV_dataset_quality_fish =  readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-05_Ragnhild_Cod_qpen-result-df_quality_data_fish.RDS")
+qpen_ASV_dataset_quality_water =  readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results/2023-05-05_Ragnhild_Cod_qpen-result-df_quality_data_water.RDS")
+
+meta_cod = data.frame(sample_data(all))
+bNTI_Dataset2 = qpen_ASV_dataset_quality_fish$result %>% 
+  #bind with water
+  bind_rows(.,qpen_ASV_dataset_quality_water$result) %>%
+  select(sample1, sample2, bNTI) %>% 
+  dplyr::rename(SampleID_A = sample1, SampleID_B = sample2, bNTI_qual = bNTI) %>%
+  left_join(., 
+            gut_bNTI$result %>%
+              select(sample1, sample2, bNTI)  %>% 
+    dplyr::rename(SampleID_A = sample1, SampleID_B = sample2, bNTI_gut= bNTI) , 
+    by = join_by(SampleID_A, SampleID_B)) %>%
+    left_join(., 
+            no_intake_bNTI$result %>%
+              select(sample1, sample2, bNTI)  %>% 
+    dplyr::rename(SampleID_A = sample1, SampleID_B = sample2, bNTI_nointake= bNTI) , 
+    by = join_by(SampleID_A, SampleID_B)) %>%
+  left_join(., meta_cod %>% rename_all(~paste0(., "_A")), by = "SampleID_A" ) %>%
+  left_join(., meta_cod %>% rename_all(~paste0(., "_B")), by = "SampleID_B") %>%
+  mutate(SampleType_A = case_when(SampleType_A == "INCOMING" ~ "Intake water", 
+                                SampleType_A == "WATER" ~ "Rearing water", 
+                                SampleType_A == "FISH"~ "Cod larvea"), 
+         SampleType_B = case_when(SampleType_B == "INCOMING" ~ "Intake water", 
+                                SampleType_B == "WATER" ~ "Rearing water", 
+                                SampleType_B == "FISH"~ "Cod larvea")) %>%
+  filter(SampleType_A == SampleType_B, System_A == System_B, Day_ch_A == Day_ch_B) %>%
+  mutate(sample_types = paste0(SampleType_A, "_",SampleType_B))
+```
+
+# Average per metacommunity 
+```{r}
+NTI_Dataset1 %>% 
+  group_by(Sample_type) %>%
+  summarise(mean_full = round(mean(NTI_all),2), 
+            sd_full = round(sd(NTI_all),2), 
+            mean_nint = round(mean(NTI_no_intake),2), 
+            sd_nint = round(sd(NTI_no_intake),2), 
+            mean_gut = round(mean(NTI_gut),2), 
+            sd_gut = round(sd(NTI_gut),2) )
+```
+
+```{r}
+NTI_Dataset2 %>% 
+  group_by(SampleType) %>%
+  summarise(mean_full = round(mean(NTI_all),2), 
+            sd_full = round(sd(NTI_all),2), 
+            mean_nint = round(mean(NTI_no_intake),2), 
+            sd_nint = round(sd(NTI_no_intake),2), 
+            mean_gut = round(mean(NTI_gut),2), 
+            sd_gut = round(sd(NTI_gut),2) )
+```
+
+
+```{r}
+bNTI_Dataset1 %>% 
+  filter(Sample_type_A == Sample_type_B, Selection_A == Selection_B) %>%
+  group_by(Sample_type_A, Sample_type_B) %>%
+  summarise(mean_full = round(mean(bNTI_full),2), 
+            sd_full = round(sd(bNTI_full),2), 
+            mean_nint = round(mean(bNTI_nointake),2), 
+            sd_nint = round(sd(bNTI_nointake),2), 
+            mean_gut = round(mean(bNTI_gut),2), 
+            sd_gut = round(sd(bNTI_gut),2) )
+```
+
+
+```{r}
+bNTI_Dataset2  %>%    
+  filter(SampleType_A == SampleType_B,System_A == System_B, Day_ch_A == Day_ch_B) %>%
+  group_by(SampleType_A, SampleType_B) %>%
+  summarise(mean_full = round(mean(bNTI_qual),2), 
+            sd_full = round(sd(bNTI_qual),2), 
+            mean_nint = round(mean(bNTI_nointake),2), 
+            sd_nint = round(sd(bNTI_nointake),2), 
+            mean_gut = round(mean(bNTI_gut),2), 
+            sd_gut = round(sd(bNTI_gut),2) )
+```
+# Average change percentage
+```{r}
+NTI_Dataset1 %>% 
+  mutate(diff_nointake = NTI_no_intake-NTI_all, 
+         diff_gut = NTI_gut-NTI_all, 
+         percent_nointake = diff_nointake/NTI_all*100,
+         percent_gut = diff_gut/NTI_all*100) %>% 
+  group_by(Sample_type) %>%
+  summarise(mean_nointake = mean(diff_nointake), 
+            mean_NTI_gut = mean(diff_gut), 
+            mean_percen_ni = mean(percent_nointake),
+            mean_percent_gut = mean(percent_gut),
+            sd_NTI_gut = sd(diff_gut), 
+            sd_nointake = sd(diff_nointake))
+```
+
+```{r}
+NTI_Dataset2 %>%
+  mutate(diff_nointake = NTI_no_intake-NTI_all, 
+         diff_gut = NTI_gut-NTI_all, 
+         percent_nointake = diff_nointake/NTI_all*100,
+         percent_gut = diff_gut/NTI_all*100) %>% 
+  group_by(SampleType) %>%
+  summarise(mean_nointake = mean(diff_nointake), 
+            mean_NTI_gut = mean(diff_gut), 
+            mean_percen_ni = mean(percent_nointake),
+            mean_percent_gut = mean(percent_gut),
+            sd_NTI_gut = sd(diff_gut), 
+            sd_nointake = sd(diff_nointake))
+```
+
+
+```{r}
+bNTI_Dataset1  %>%   
+  mutate(diff_nointake = bNTI_nointake-bNTI_full, 
+         diff_gut = bNTI_gut-bNTI_full, 
+         percent_nointake = diff_nointake/bNTI_full*100,
+         percent_gut = diff_gut/bNTI_full*100) %>% 
+  group_by(sample_types) %>%
+  summarise(mean_nointake = mean(diff_nointake), 
+            mean_NTI_gut = mean(diff_gut), 
+            mean_percen_ni = mean(percent_nointake),
+            mean_percent_gut = mean(percent_gut),
+            sd_NTI_gut = sd(diff_gut), 
+            sd_nointake = sd(diff_nointake))
+```
+
+
+```{r}
+bNTI_Dataset2 %>% 
+  mutate(diff_nointake = bNTI_nointake-bNTI_qual, 
+         diff_gut = bNTI_gut-bNTI_qual, 
+         percent_nointake = diff_nointake/bNTI_qual*100,
+         percent_gut = diff_gut/bNTI_qual*100) %>% 
+  group_by(sample_types) %>%
+  
+  summarise(mean_nointake = mean(diff_nointake), 
+            mean_NTI_gut = mean(diff_gut), 
+            mean_percent_gut = mean(percent_gut),
+            mean_percen_ni = mean(percent_nointake), 
+            sd_NTI_gut = sd(diff_gut), 
+            sd_nointake = sd(diff_nointake))
+```
+
+
+## Conclusions
+```{r}
+NTI_Dataset1 %>%
+  group_by(Sample_type) %>% 
+  summarise(n=n())
+
+#Did conclusions change? 
+NTI_Dataset1 %>% pivot_longer(-c(Sample:NTI_all, Sample_type:Strain), names_to = "metacommunity", values_to = "NTI_meta") %>%
+  filter(!is.na(NTI_meta)) %>%
+  mutate(conclusion_all = case_when(NTI_all >2 ~ "clustered", 
+                                    NTI_all< -2 ~ "dispersed",
+                                    T ~ "stochastic"), 
+         conclusion_meta = case_when(NTI_meta>2 ~ "clustered", 
+                                    NTI_meta< -2 ~ "dispersed",
+                                    T ~ "stochastic")) %>% 
+  mutate(same_conclusion = conclusion_all==conclusion_meta) %>%
+  group_by(Sample_type, same_conclusion, conclusion_all, conclusion_meta, metacommunity) %>% 
+  summarise(n=n()) %>%
+  mutate(per_gut = n/64*100)
+```
+
+# NTI bNTI change plots 
+```{r}
+a = NTI_Dataset1 %>%
+  mutate("Rearing+Salmon gut" = NTI_no_intake-NTI_all, 
+         "Salmon gut" = NTI_gut-NTI_all) %>%
+  select(-(NTI_all:NTI_gut)) %>% 
+  pivot_longer(-c(Sample:Strain), names_to = "Metacommunity", values_to = "Change")   %>%
+  filter(!is.na(Change)) %>%
+  mutate(Metacommunity = factor(Metacommunity, levels = c("Rearing+Salmon gut", "Salmon gut")), 
+         Sample_type = case_when(Sample_type == "Gut"~"Fish", TRUE ~ Sample_type)) %>%
+  ggplot2::ggplot(aes(y=Change, 
+                      x= Metacommunity, group = Sample_type, fill = Sample_type))  + 
+  geom_point(size =2, shape = 21, show.legend = T, position = position_dodge(-0.5)) + 
+  theme_bw(base_size = 11) + 
+  scale_fill_manual("Sample type", values = cbPalette[c(1,2)])+
+  geom_hline(yintercept = 0)+ 
+  stat_summary(fun.data = conf3, 
+               color = "black", 
+               aes(group = interaction(Metacommunity, Sample_type)), 
+               geom = "boxplot", position = position_dodge(-0.5),
+               alpha = 0.9, width = 0.4,
+               show.legend = F) + 
+
+  xlab("") + 
+  ylab("NTI difference")
+
+b = NTI_Dataset2 %>%
+  mutate("Rearing+Cod" = NTI_no_intake-NTI_all, 
+         "Cod" = NTI_gut-NTI_all) %>%
+  select(-(NTI_all:NTI_gut)) %>% 
+  pivot_longer(-c(Sample:FishID), names_to = "Metacommunity", values_to = "Change")   %>%
+  filter(!is.na(Change)) %>%
+  mutate(Metacommunity = factor(Metacommunity, levels = c("Rearing+Cod", "Cod")), 
+         SampleType = case_when(SampleType == "Cod larvea"~"Fish", TRUE ~ SampleType)) %>%
+  ggplot2::ggplot(aes(y=Change, 
+                      x= Metacommunity, group = SampleType, fill = SampleType))  + 
+  geom_point(size =2, shape = 21, show.legend = T, position = position_dodge(-0.5)) + 
+  theme_bw(base_size = 11) + 
+  scale_fill_manual("Sample type",values = cbPalette[c(1,2)])+
+  geom_hline(yintercept = 0)+ 
+  stat_summary(fun.data = conf3, 
+               color = "black", 
+               aes(group = interaction(Metacommunity, SampleType)), 
+               geom = "boxplot", position = position_dodge(-0.5),
+               alpha = 0.9, width = 0.4,
+               show.legend = F) + 
+
+  xlab("") + 
+  ylab("NTI difference")
+
+c = bNTI_Dataset1 %>%
+  mutate("Rearing+Salmon gut" = bNTI_nointake-bNTI_full, 
+         "Salmon gut" = bNTI_gut-bNTI_full) %>%
+  select(-(bNTI_full:bNTI_gut)) %>% 
+  pivot_longer(-c(Sample_A:sample_types), names_to = "Metacommunity", values_to = "Change")   %>%
+  filter(!is.na(Change)) %>%
+  mutate(Metacommunity = factor(Metacommunity, levels = c("Rearing+Salmon gut", "Salmon gut")), 
+         Sample_type_A = case_when(Sample_type_A == "Gut"~"Fish", TRUE ~ Sample_type_A)) %>%
+  ggplot2::ggplot(aes(y=Change, 
+                      x= Metacommunity, group = Sample_type_A, fill = Sample_type_A))  + 
+  geom_point(size =2, shape = 21, show.legend = T, position = position_dodge(-0.5)) + 
+  theme_bw(base_size = 11) + 
+  scale_fill_manual("Sample type",values = cbPalette[c(1,2)])+
+  geom_hline(yintercept = 0)+ 
+  stat_summary(fun.data = conf3, 
+               color = "black", 
+               aes(group = interaction(Metacommunity, Sample_type_A)), 
+               geom = "boxplot", position = position_dodge(-0.5),
+               alpha = 0.9, width = 0.4,
+               show.legend = F) + 
+
+  xlab("") + 
+  ylab(expression(beta~"NTI difference"))
+
+d  = bNTI_Dataset2 %>%
+  mutate("Rearing+Cod" = bNTI_nointake-bNTI_qual, 
+         "Cod" = bNTI_gut-bNTI_qual) %>%
+  select(-(bNTI_qual:bNTI_gut)) %>% 
+  pivot_longer(-c(SampleID_A:sample_types), names_to = "Metacommunity", values_to = "Change")   %>%
+  filter(!is.na(Change)) %>%
+    mutate(Metacommunity = factor(Metacommunity, levels = c("Rearing+Cod", "Cod")), 
+           SampleType_A = case_when(SampleType_A == "Cod larvea"~"Fish", TRUE ~ SampleType_A)) %>%
+  ggplot2::ggplot(aes(y=Change, 
+                      x= Metacommunity, group = SampleType_A, fill = SampleType_A))  + 
+  geom_point(size =2, shape = 21, show.legend = T, position = position_dodge(-0.5)) + 
+  theme_bw(base_size = 11) + 
+  scale_fill_manual("Sample type",values = cbPalette[c(1,2)])+
+  geom_hline(yintercept = 0)+ 
+  stat_summary(fun.data = conf3, 
+               color = "black", 
+               aes(group = interaction(Metacommunity, SampleType_A)), 
+               geom = "boxplot", position = position_dodge(-0.5),
+               alpha = 0.9, width = 0.4,
+               show.legend = F) + 
+
+  xlab("") + 
+  ylab(expression(beta~"NTI difference"))
+```
+
+```{r}
+ggarrange(a, b, c, d, common.legend = T, legend = "right", labels = c("a)", "b)", "c)", "d)" ))
+ggsave(filename = paste0(filepath_figures, "metacommunity_ntibnti_change.png"), width = 180, height = 100, units = "mm")
+```
+
+## kladd
+```{r}
+ds1_p = NTI_Dataset1 %>%
+  filter(Sample_type != "Intake water") %>% 
+  reshape2::melt(measure.vars = c("NTI_no_intake", "NTI_gut"), 
+                 variable.name = "metacommunity", value.name = "NTI_meta") %>% 
+  mutate(metacommunity = case_when(metacommunity == "NTI_no_intake" ~ "Rearing+Salmon gut", 
+                                   metacommunity == "NTI_gut" ~ "Salmon gut")) %>%
+  mutate(Sample_type = case_when(Sample_type == "Gut" ~ "Salmon gut", T~Sample_type)) %>%
+  
+  ggplot(aes(x=NTI_all, y = NTI_meta, 
+             fill = Sample_type, 
+                      shape = Selection)) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = c(21,23), "Selection") + 
+  scale_fill_manual(values = cbPalette[c(2,1)])+
+  annotate(geom = "rect", xmin=-2, xmax=2, ymin=-Inf, ymax=Inf,
+            color = "grey50", 
+            fill = "grey50", alpha = 0.1) +  
+  annotate(geom = "rect", ymin=-2, ymax=2, xmin=-Inf, xmax=Inf,
+            color = cbPalette[8], 
+            fill = cbPalette[8], alpha = 0.1) +
+  geom_point(size = 2) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  theme_bw(base_size = 11)+
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  coord_equal(ratio = 1) + 
+  facet_grid(~metacommunity,switch = "y") + 
+  ylab(expression(NTI~reduced~meta)) + 
+  xlab(expression(NTI~full~meta))  
+
+ds2_p = NTI_Dataset2 %>%
+  reshape2::melt(measure.vars = c("NTI_no_intake", "NTI_gut"), 
+                 variable.name = "metacommunity", value.name = "NTI_meta") %>% 
+  mutate(metacommunity = case_when(metacommunity == "NTI_no_intake" ~ "Rearing+Cod", 
+                                   metacommunity == "NTI_gut" ~ "Cod")) %>%
+  ggplot(aes(x=NTI_all, y = NTI_meta, 
+             fill = SampleType, 
+                      shape = System)) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = c(21,23, 24), "System") + 
+  scale_fill_manual(values = cbPalette[c(1,2)])+
+  annotate(geom = "rect", xmin=-2, xmax=2, ymin=-Inf, ymax=Inf,
+            color = "grey50", 
+            fill = "grey50", alpha = 0.1) +  
+  annotate(geom = "rect", ymin=-2, ymax=2, xmin=-Inf, xmax=Inf,
+            color = cbPalette[8], 
+            fill = cbPalette[8], alpha = 0.1) +
+  geom_point(size = 2) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  theme_bw(base_size = 11)+
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  coord_equal(ratio = 1) + 
+  facet_grid(~metacommunity,switch = "y") + 
+  ylab(expression(NTI~reduced~meta)) + 
+  xlab(expression(NTI~full~meta))  
+
+ds1_pb = bNTI_Dataset1 %>% reshape2::melt(measure.vars = c("bNTI_nointake", "bNTI_gut"), 
+                 variable.name = "metacommunity", value.name = "bNTI") %>% 
+  mutate(metacommunity = case_when(metacommunity == "bNTI_nointake" ~ "Rearing+Salmon gut", 
+                                   metacommunity == "bNTI_gut" ~ "Salmon gut")) %>%
+   mutate(Sample_type_A = case_when(Sample_type_A == "Gut" ~ "Salmon gut", T~Sample_type_A)) %>%
+  
+  ggplot(aes(x=bNTI_full, y = bNTI, 
+             fill = Sample_type_A, shape = Selection_B)) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = c(21,23), "Selection") + 
+  scale_fill_manual(values = cbPalette[c(2,1)])+
+  annotate(geom = "rect", xmin=-2, xmax=2, ymin=-Inf, ymax=Inf,
+            color = "grey50", 
+            fill = "grey50", alpha = 0.1) +  
+  annotate(geom = "rect", ymin=-2, ymax=2, xmin=-Inf, xmax=Inf,
+            color = cbPalette[8], 
+            fill = cbPalette[8], alpha = 0.1) +
+  geom_point(size = 2) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  theme_bw(base_size = 11)+
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  coord_equal(ratio = 1) + 
+  facet_grid(~metacommunity,switch = "y") + 
+  ylab(expression(beta~NTI~reduced~meta)) + 
+  xlab(expression(beta~NTI~full~meta)) 
+
+ds2_pb = bNTI_Dataset2 %>% reshape2::melt(measure.vars = c("bNTI_nointake", "bNTI_gut"), 
+                 variable.name = "metacommunity", value.name = "bNTI") %>% 
+  mutate(metacommunity = case_when(metacommunity == "bNTI_nointake" ~ "Rearing+Cod", 
+                                   metacommunity == "bNTI_gut" ~ "Cod")) %>%
+  ggplot(aes(x=bNTI_qual, y = bNTI, 
+             fill = SampleType_A, shape = System_A)) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = c(21,23,24), "System") + 
+  scale_fill_manual(values = cbPalette[c(1,2)])+
+  annotate(geom = "rect", xmin=-2, xmax=2, ymin=-Inf, ymax=Inf,
+            color = "grey50", 
+            fill = "grey50", alpha = 0.1) +  
+  annotate(geom = "rect", ymin=-2, ymax=2, xmin=-Inf, xmax=Inf,
+            color = cbPalette[8], 
+            fill = cbPalette[8], alpha = 0.1) +
+  geom_point(size = 2) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  theme_bw(base_size = 11)+
+  guides(fill = guide_legend(title = "Sample type", override.aes = list(shape = 21))) + 
+  coord_equal(ratio = 1) + 
+  facet_grid(~metacommunity,switch = "y") + 
+  ylab(expression(beta~NTI~reduced~meta)) + 
+  xlab(expression(beta~NTI~full~meta)) 
+```
+
+```{r}
+ggarrange(nrow = 2,
+  ggarrange(ds1_p, ds1_pb, common.legend = T, legend = "right", labels = c("a)", "b)" )),
+  ggarrange(ds2_p, ds2_pb, common.legend = T, legend = "right", labels = c( "c)", "d)" )))
+
+ggsave(filename = paste0(filepath_figures, "metacommunity_ntibnti_comparison.png"), width = 180, height = 120, units = "mm")
+```
+

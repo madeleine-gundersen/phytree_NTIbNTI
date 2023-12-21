@@ -1,0 +1,213 @@
+```{r}
+#libraries
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+library(ggtree)
+library(ggpmisc)
+library(ggpubr)
+```
+
+```{r}
+#load data 
+filepath ="C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub"
+filepath_results =paste0( "C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Results", Sys.Date(), "_Exploring_phytree_")
+filepath_figures = paste0("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Figures/" , Sys.Date(), "_Exploring_phytree_")
+
+cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+conf3 =function(x) { #x is a dataframe
+  r <- c(mean(x) - sd(x),
+         mean(x)-sd(x),
+         mean(x),
+         mean(x)+sd(x), 
+         mean(x) + sd(x))
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax") 
+  r}
+```
+
+# Dataset 1
+```{r, message=FALSE}
+all = readRDS("C:/Users/madel/OneDrive - NTNU/Doktorgrad/Project 9 Exploring_phylogenetic_tree_NT_bNTI/GitHub/Dataset1/2023-04-17_phyloseq_without_salmon.RDS") #3149
+no_intake = subset_samples(physeq = all, Sample_type != "Intake water")
+no_intake = phyloseq::filter_taxa(physeq = no_intake, function(x) sum(x)>0 , prune = TRUE) #2509 taxa
+
+only_gut = subset_samples(physeq = all, Sample_type == "Gut")
+only_gut = phyloseq::filter_taxa(physeq = only_gut, function(x) sum(x)>0 , prune = TRUE) #2106 taxa
+
+saveRDS(object = no_intake, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_nointake-2509asv.RDS"))
+saveRDS(object = only_gut, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_only-gut-2106asv.RDS"))
+
+(3149-2509)*100/3149
+3149 - 2106
+(3149-2106)*100/3149
+
+# samples removed
+8*100/88
+(88-64)*100/88
+```
+
+##Dataset phylotrees
+```{r}
+ggtree(all) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("All - 3149 ASVs")
+ggtree(no_intake) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("No intake - 2509 ASVs")
+ggtree(only_gut) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("Only Gut - 2106 ASVs")
+```
+
+##Calculations NTI and bNTI
+### NTI
+```{r}
+set.seed(3003)
+#NTI
+exp = no_intake
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_no-intake-2509ASVs.RDS"))
+
+exp = only_gut
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_only-gut-2106ASVs.RDS"))
+```
+
+### bNTI
+```{r}
+data = no_intake
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_domain-no-intake-2509ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_no-intake-2509ASVs.RDS"))
+
+data = only_gut
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_only-gut-2106ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_only-gut-2106ASVs.RDS"))
+```
+
+# Dataset 2
+```{r, message=FALSE}
+all = readRDS(paste0(filepath, "/Dataset2/2023-05-04_Cycle4_phyloseq_quality2_3294taxa.RDS"))
+all = phyloseq::filter_taxa(physeq = all, function(x) sum(x)>0 , prune = TRUE)
+only_tank = subset_samples(physeq = all, SampleType %in% c("WATER", "FISH"))
+only_tank = phyloseq::filter_taxa(physeq = only_tank, function(x) sum(x)>0 , prune = TRUE) #3064 taxa
+only_gut = subset_samples(physeq = all, SampleType == "FISH")
+only_gut = phyloseq::filter_taxa(physeq = only_gut, function(x) sum(x)>0 , prune = TRUE) #1883 taxa
+
+#saveRDS(object = only_tank, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_nointake-3064asv.RDS"))
+#saveRDS(object = only_gut, file = paste0(filepath,"/", Sys.Date(), "_phyloseq_only-gut-1883asv.RDS"))
+
+(3294 -3064 )*100/3294 
+3294  - 3064 
+(3294 -1883 )*100/3294 
+3294-1883 
+
+(197-156)*100/197
+(197-108)*100/197
+
+```
+
+##Dataset phylotrees
+```{r}
+ggtree(all) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("All - 3294 ASVs")
+ggtree(only_tank) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("No intake - 3064 ASVs")
+ggtree(only_gut) + layout_circular() +  geom_tiplab(geom = "text", size = 2) + ggtitle("Only Gut - 1883 ASVs")
+```
+
+##Calculations NTI and bNTI
+### NTI
+```{r}
+set.seed(3003)
+#NTI
+exp = only_tank
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_only_tank-3064ASVs.RDS"))
+
+exp = only_gut
+samp = t(otu_table(exp))@.Data #stores the OTU table in samp
+phy = phyloseq::phy_tree(exp) #stores the phylogenetic tree in phy 
+samporder = samp[,phy$tip.label] #sorts the otu-table so it matches the phylogenetic tree 
+phydist = stats::cophenetic(phy) # make a phylogenetic distance matrix of the phylogentic tree
+NTI = picante::ses.mntd(samporder, phydist, null.model="taxa.labels",runs = 999, iterations = 1000, abundance.weighted=FALSE) 
+NTI[["NTI"]] <- NTI$mntd.obs.z*-1 # transform z-scores in NTI by multiplying by -1
+saveRDS(object = NTI, file = paste0(filepath_results, "NTI_999runs_only-gut-1883ASVs.RDS"))
+```
+
+### bNTI
+```{r}
+data = only_tank
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_domain-only_tank-3064ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_only_tank-3064ASVs.RDS"))
+
+data = only_gut
+ASV_tab = t(as.matrix(data@otu_table@.Data)) #community data with samples as rows and species as cols
+ASV_tree = data@phy_tree #phylogenic tree rooted
+ASV_tax = data@tax_table@.Data
+pd = iCAMP::pdist.p(tree = ASV_tree)
+saveRDS(object = pd, file = paste0(filepath_results, "pd-icamp_only-gut-1883ASVs.RDS"))
+
+qpen_ASV_dataset = iCAMP::qpen(
+  comm = ASV_tab, 
+  tree = ASV_tree,
+  pd = pd,
+  ab.weight = TRUE,
+  rand.time = 1000, 
+  sig.bNTI = 1.96, 
+  sig.rc = 0.95,
+  nworker = 4)
+
+saveRDS(object = qpen_ASV_dataset, file = paste0(filepath_results, "qpen-result-df_only-gut-1883ASVs.RDS"))
+```
